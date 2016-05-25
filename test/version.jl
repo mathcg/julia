@@ -232,11 +232,12 @@ io = IOBuffer()
 @test VERSION.patch == ccall(:jl_ver_patch, Cint, ())
 
 # test construction with non-Int and non-String components
+import Base.Test.GenericString
 @test_throws MethodError VersionNumber()
 @test VersionNumber(true) == v"1"
 @test VersionNumber(true, 0x2) == v"1.2"
 @test VersionNumber(true, 0x2, Int128(3)) == v"1.2.3"
 @test VersionNumber(true, 0x2, Int128(3)) == v"1.2.3"
-@test VersionNumber(true, 0x2, Int128(3), (utf16("rc"), 0x1)) == v"1.2.3-rc.1"
-@test VersionNumber(true, 0x2, Int128(3), (utf16("rc"), 0x1)) == v"1.2.3-rc.1"
-@test VersionNumber(true, 0x2, Int128(3), (), (utf16("sp"), 0x2)) == v"1.2.3+sp.2"
+@test VersionNumber(true, 0x2, Int128(3), (GenericString("rc"), 0x1)) == v"1.2.3-rc.1"
+@test VersionNumber(true, 0x2, Int128(3), (GenericString("rc"), 0x1)) == v"1.2.3-rc.1"
+@test VersionNumber(true, 0x2, Int128(3), (), (GenericString("sp"), 0x2)) == v"1.2.3+sp.2"

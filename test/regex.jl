@@ -1,5 +1,7 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
+import Base.Test.GenericString
+
 function collect_eachmatch(re, str, overlap=false)
     [m.match for m in collect(eachmatch(re, str, overlap))]
 end
@@ -35,8 +37,8 @@ show(buf, r"")
 @test ismatch(Regex("^a\0b\$"), "a\0b")
 
 # regex match / search string must be a String
-@test_throws ArgumentError match(r"test", utf32("this is a test"))
-@test_throws ArgumentError search(utf32("this is a test"), r"test")
+@test_throws ArgumentError match(r"test", GenericString("this is a test"))
+@test_throws ArgumentError search(GenericString("this is a test"), r"test")
 
 # Named subpatterns
 let m = match(r"(?<a>.)(.)(?<b>.)", "xyz")

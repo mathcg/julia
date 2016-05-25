@@ -37,7 +37,7 @@ str = "s\u2200"
 @test sizeof("\u2222") == 3
 
 # issue #3597
-@test string(utf32(['T', 'e', 's', 't'])[1:1], "X") == "TX"
+@test string(GenericString("Test")[1:1], "X") == "TX"
 
 for T = (UInt8,Int8,UInt16,Int16,UInt32,Int32,UInt64,Int64,UInt128,Int128,BigInt),
     b = 2:62, _ = 1:10
@@ -245,11 +245,9 @@ end
 let s = normalize_string("tést",:NFKC)
     @test unsafe_string(Base.unsafe_convert(Cstring, s)) == s
     @test unsafe_string(convert(Cstring, Symbol(s))) == s
-    @test wstring(Base.unsafe_convert(Cwstring, wstring(s))) == s
 end
 let s = "ba\0d"
     @test_throws ArgumentError Base.unsafe_convert(Cstring, s)
-    @test_throws ArgumentError Base.unsafe_convert(Cwstring, wstring(s))
 end
 
 cstrdup(s) = @static is_windows() ? ccall(:_strdup, Cstring, (Cstring,), s) : ccall(:strdup, Cstring, (Cstring,), s)
@@ -257,32 +255,11 @@ let p = cstrdup("hello")
     @test unsafe_string(p) == "hello" == unsafe_wrap(String, cstrdup(p), true)
     Libc.free(p)
 end
-let p = @static is_windows() ? ccall(:_wcsdup, Cwstring, (Cwstring,), "tést") : ccall(:wcsdup, Cwstring, (Cwstring,), "tést")
-    @test wstring(p) == "tést"
-    Libc.free(p)
-end
-
-# issue # 11389: Vector{UInt32} was copied with UTF32String, unlike Vector{Char}
-a = UInt32[48,0]
-b = UTF32String(a)
-@test b == "0"
-a[1] = 65
-@test b == "A"
-c = Char['0','\0']
-d = UTF32String(c)
-@test d == "0"
-c[1] = 'A'
-@test d == "A"
 
 # iteration
 @test [c for c in "ḟøøƀäṙ"] == ['ḟ', 'ø', 'ø', 'ƀ', 'ä', 'ṙ']
 @test [i for i in eachindex("ḟøøƀäṙ")] == [1, 4, 6, 8, 10, 12]
 @test [x for x in enumerate("ḟøøƀäṙ")] == [(1, 'ḟ'), (2, 'ø'), (3, 'ø'), (4, 'ƀ'), (5, 'ä'), (6, 'ṙ')]
-
-# Issue #11140
-@test isvalid(utf32("a")) == true
-@test isvalid(utf32("\x00")) == true
-@test isvalid(UTF32String, UInt32[0xd800,0]) == false
 
 # test all edge conditions
 for (val, pass) in (
@@ -322,39 +299,9 @@ for (val, pass) in (
         )
     @test isvalid(String, val) == pass
 end
-for (val, pass) in (
-        (UInt16[0x0000], true),
-        (UInt16[0xd7ff,0], true),
-        (UInt16[0xd800,0], false),
-        (UInt16[0xdfff,0], false),
-        (UInt16[0xe000,0], true),
-        (UInt16[0xffff,0], true),
-        (UInt16[0xd800,0xdc00,0], true),
-        (UInt16[0xdbff,0xdfff,0], true),
-        (UInt16[0xd800,0x0100,0], false),
-        (UInt16[0xdc00,0x0100,0], false),
-        (UInt16[0xdc00,0xd800,0], false)
-        )
-    @test isvalid(UTF16String, val) == pass
-end
-for (val, pass) in (
-        (UInt32[0x0000], true),
-        (UInt32[0xd7ff,0], true),
-        (UInt32[0xd800,0], false),
-        (UInt32[0xdfff,0], false),
-        (UInt32[0xe000,0], true),
-        (UInt32[0xffff,0], true),
-        (UInt32[0x100000,0], true),
-        (UInt32[0x10ffff,0], true),
-        (UInt32[0x110000,0], false),
-        )
-    @test isvalid(UTF32String, val) == pass
-end
 
 # Issue #11203
 @test isvalid(String, UInt8[]) == true
-@test isvalid(UTF16String,UInt16[]) == true
-@test isvalid(UTF32String,UInt32[]) == true
 
 # Check UTF-8 characters
 # Check ASCII range (true),
@@ -427,21 +374,6 @@ end
 
 # 11482
 
-# isvalid
-let s = "abcdef", u8 = "abcdef\uff", u16 = utf16(u8), u32 = utf32(u8),
-    bad32 = utf32(UInt32[65,0x110000]), badch = Char[0x110000][1]
-
-    @test !isvalid(bad32)
-    @test !isvalid(badch)
-    @test isvalid(s)
-    @test isvalid(u8)
-    @test isvalid(u16)
-    @test isvalid(u32)
-    @test isvalid(String, u8)
-    @test isvalid(UTF16String, u16)
-    @test isvalid(UTF32String, u32)
-end
-
 # lower and upper
 @test uppercase("aBc") == "ABC"
 @test uppercase('A') == 'A'
@@ -457,28 +389,26 @@ end
 @test ucfirst("abc") == "Abc"
 @test lcfirst("ABC") == "aBC"
 @test lcfirst("aBC") == "aBC"
-@test ucfirst(utf32("")) == ""
-@test lcfirst(utf32("")) == ""
-@test ucfirst(utf32("a")) == "A"
-@test lcfirst(utf32("A")) == "a"
-@test lcfirst(utf32("a")) == "a"
-@test ucfirst(utf32("A")) == "A"
+@test ucfirst(GenericString("")) == ""
+@test lcfirst(GenericString("")) == ""
+@test ucfirst(GenericString("a")) == "A"
+@test lcfirst(GenericString("A")) == "a"
+@test lcfirst(GenericString("a")) == "a"
+@test ucfirst(GenericString("A")) == "A"
 
-# issue # 11464: uppercase/lowercase of UTF16String becomes a String
+# issue # 11464: uppercase/lowercase of GenericString becomes a String
 str = "abcdef\uff\uffff\u10ffffABCDEF"
 @test typeof(uppercase("abcdef")) == String
-@test typeof(uppercase(utf16(str))) == UTF16String
-@test typeof(uppercase(utf32(str))) == UTF32String
+@test typeof(uppercase(GenericString(str))) == String
 @test typeof(lowercase("ABCDEF")) == String
-@test typeof(lowercase(utf16(str))) == UTF16String
-@test typeof(lowercase(utf32(str))) == UTF32String
+@test typeof(lowercase(GenericString(str))) == String
 
 foomap(ch) = (ch > Char(65))
 foobar(ch) = Char(0xd800)
 foobaz(ch) = reinterpret(Char, typemax(UInt32))
-@test_throws UnicodeError map(foomap, utf16(str))
-@test_throws UnicodeError map(foobar, utf16(str))
-@test_throws UnicodeError map(foobaz, utf16(str))
+@test_throws ArgumentError map(foomap, GenericString(str))
+@test map(foobar, GenericString(str)) == String(repeat(b"\ud800", outer=[17]))
+@test map(foobaz, GenericString(str)) == String(repeat(b"\ufffd", outer=[17]))
 
 @test "a".*["b","c"] == ["ab","ac"]
 @test ["b","c"].*"a" == ["ba","ca"]
@@ -491,7 +421,7 @@ foobaz(ch) = reinterpret(Char, typemax(UInt32))
 # ascii works on ASCII strings and fails on non-ASCII strings
 @test ascii("Hello, world") == "Hello, world"
 @test typeof(ascii("Hello, world")) == String
-@test ascii(utf32("Hello, world")) == "Hello, world"
-@test typeof(ascii(utf32("Hello, world"))) == String
+@test ascii(GenericString("Hello, world")) == "Hello, world"
+@test typeof(ascii(GenericString("Hello, world"))) == String
 @test_throws ArgumentError ascii("Hello, ∀")
-@test_throws ArgumentError ascii(utf32("Hello, ∀"))
+@test_throws ArgumentError ascii(GenericString("Hello, ∀"))
