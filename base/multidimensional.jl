@@ -380,9 +380,6 @@ function cartindex_exprs(indexes, syms)
             push!(exprs, :($syms[$i]))
         end
     end
-    if isempty(exprs)
-        push!(exprs, 1)  # Handle the zero-dimensional case
-    end
     exprs
 end
 @generated function _getindex{T,N}(l::LinearIndexing, A::AbstractArray{T,N}, I::Union{Real,AbstractArray,Colon,CartesianIndex}...)
