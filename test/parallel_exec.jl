@@ -796,6 +796,29 @@ end
 # Test asyncmap
 @test allunique(asyncmap(x->object_id(current_task()), 1:100))
 
+# CachingPool tests
+wp = CachingPool(workers())
+@test [1:100...] == pmap(wp, x->x, 1:100)
+
+# test variable broadcasting
+define(wp; wp_foo=1, wp_bar="foobar", wp_baz=ones(10^6))
+for p in workers()
+    @test remotecall_fetch(()->wp_foo, p) == 1
+    @test remotecall_fetch(()->wp_bar, p) == "foobar"
+    @test remotecall_fetch(()->wp_baz, p) == ones(10^6)
+end
+
+empty!(wp)
+yield()
+
+for p in workers()
+    @test remotecall_fetch(()->wp_foo, p) == nothing
+    @test remotecall_fetch(()->wp_bar, p) == nothing
+    @test remotecall_fetch(()->wp_baz, p) == nothing
+end
+
+@test length(wp.map_obj2ref) == 0
+@test length(wp.broadcasted_symbols) == 0
 
 # The below block of tests are usually run only on local development systems, since:
 # - tests which print errors

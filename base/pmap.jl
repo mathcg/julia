@@ -70,7 +70,7 @@ The following are equivalent:
 * `pmap(f, c; retry_n=1)` and `asyncmap(retry(remote(f)),c)`
 * `pmap(f, c; retry_n=1, on_error=e->e)` and `asyncmap(x->try retry(remote(f))(x) catch e; e end, c)`
 """
-function pmap(p::WorkerPool, f, c;  distributed=true, batch_size=1, on_error=nothing,
+function pmap(p::AbstractWorkerPool, f, c;  distributed=true, batch_size=1, on_error=nothing,
                                     retry_n=0,
                                     retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
                                     retry_on=DEFAULT_RETRY_ON)
@@ -97,6 +97,7 @@ function pmap(p::WorkerPool, f, c;  distributed=true, batch_size=1, on_error=not
         if on_error != nothing
             f = wrap_on_error(f, on_error)
         end
+
         return collect(AsyncGenerator(f, c))
     else
         batches = batchsplit(c, min_batch_count = length(p) * 3,
@@ -116,11 +117,12 @@ function pmap(p::WorkerPool, f, c;  distributed=true, batch_size=1, on_error=not
         if (on_error != nothing) || (retry_n > 0)
             process_batch_errors!(p, f_orig, results, on_error, retry_on, retry_n, retry_max_delay)
         end
+
         return results
     end
 end
 
-pmap(p::WorkerPool, f, c1, c...; kwargs...) = pmap(p, a->f(a...), zip(c1, c...); kwargs...)
+pmap(p::AbstractWorkerPool, f, c1, c...; kwargs...) = pmap(p, a->f(a...), zip(c1, c...); kwargs...)
 pmap(f, c; kwargs...) = pmap(default_worker_pool(), f, c; kwargs...)
 pmap(f, c1, c...; kwargs...) = pmap(a->f(a...), zip(c1, c...); kwargs...)
 
