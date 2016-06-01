@@ -1018,7 +1018,7 @@ function abstract_call(f::ANY, fargs, argtypes::Vector{Any}, vtypes::VarTable, s
     return abstract_call_gf_by_type(f, atype, sv)
 end
 
-function abstract_eval_call(e, vtypes::VarTable, sv::InferenceState)
+function abstract_eval_call(e::Expr, vtypes::VarTable, sv::InferenceState)
     argtypes = Any[abstract_eval(a, vtypes, sv) for a in e.args]
     #print("call ", e.args[1], argtypes, "\n\n")
     for x in argtypes
@@ -2423,6 +2423,13 @@ function inlineable(f::ANY, ft::ANY, e::Expr, atypes::Vector{Any}, sv::Inference
             return NF
         end
         =#
+
+        # convert call to invoke
+        cache_linfo = ccall(:jl_get_spec_lambda, Any, (Any,), atype) # TODO: merge tfunc and spec arrays so this lookup unnecessary
+        if cache_linfo !== nothing
+            e.head = :invoke
+            unshift!(e.args, cache_linfo)
+        end
         return NF
     end
 

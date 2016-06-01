@@ -1114,6 +1114,7 @@ void *jl_get_llvmf(jl_tupletype_t *tt, bool getwrapper, bool getdeclarations)
         JL_GC_POP();
         return NULL;
     }
+    jl_compile_linfo(linfo); // make sure to compile this normally first, since `emit_function` doesn't handle recursive compilation correctly
 
     if (!getdeclarations) {
         // emit this function into a new module
@@ -1152,7 +1153,6 @@ void *jl_get_llvmf(jl_tupletype_t *tt, bool getwrapper, bool getdeclarations)
             return specf;
         }
     }
-    jl_compile_linfo(linfo);
     Function *llvmf;
     if (!getwrapper && linfo->functionObjectsDecls.specFunctionObject != NULL) {
         llvmf = (Function*)linfo->functionObjectsDecls.specFunctionObject;
@@ -2680,12 +2680,33 @@ static jl_cgval_t emit_call_function_object(jl_lambda_info_t *li, const jl_cgval
                            expr_type(callexpr, ctx), ctx);
 }
 
+static jl_cgval_t emit_invoke(jl_expr_t *ex, jl_codectx_t *ctx)
+{
+    jl_value_t **args = (jl_value_t**)jl_array_data(ex->args);
+    size_t arglen = jl_array_dim0(ex->args);
+    size_t nargs = arglen - 2;
+    assert(arglen >= 2);
+    jl_lambda_info_t *li = (jl_lambda_info_t*)args[0];
+    assert(jl_is_lambda_info(li) && !li->inInference);
+
+    jl_compile_linfo(li);
+    assert(li->functionObjectsDecls.functionObject != NULL);
+    Value *theFptr = (Value*)li->functionObjectsDecls.functionObject;
+    jl_cgval_t fval = emit_expr(args[1], ctx);
+    jl_cgval_t result = emit_call_function_object(li, fval, theFptr, &args[1], nargs, (jl_value_t*)ex, ctx);
+    if (result.typ == jl_bottom_type) {
+        CreateTrap(builder);
+    }
+    return result;
+}
+
 static jl_cgval_t emit_call(jl_expr_t *ex, jl_codectx_t *ctx)
 {
     jl_value_t *expr = (jl_value_t*)ex;
     jl_value_t **args = (jl_value_t**)jl_array_data(ex->args);
     size_t arglen = jl_array_dim0(ex->args);
     size_t nargs = arglen - 1;
+    assert(arglen >= 1);
     Value *theFptr = NULL;
     jl_cgval_t result;
     jl_value_t *aty = NULL;
@@ -2732,7 +2753,8 @@ static jl_cgval_t emit_call(jl_expr_t *ex, jl_codectx_t *ctx)
                   jl_sprint((jl_value_t*)aty));
               }*/
             jl_lambda_info_t *li = jl_get_specialization1((jl_tupletype_t*)aty);
-            if (li != NULL) {
+            if (li != NULL && !li->inInference) {
+                jl_compile_linfo(li);
                 assert(li->functionObjectsDecls.functionObject != NULL);
                 theFptr = (Value*)li->functionObjectsDecls.functionObject;
                 jl_cgval_t fval;
@@ -3174,6 +3196,9 @@ static jl_cgval_t emit_expr(jl_value_t *expr, jl_codectx_t *ctx)
         builder.CreateCondBr(isfalse, ifnot, ifso);
         builder.SetInsertPoint(ifso);
     }
+    else if (head == invoke_sym) {
+        return emit_invoke(ex, ctx);
+    }
     else if (head == call_sym) {
         if (ctx->linfo->def) { // don't bother codegen constant-folding for toplevel
             jl_value_t *c = static_eval(expr, ctx, true, true);
@@ -3500,7 +3525,10 @@ static Function *gen_cfun_wrapper(jl_function_t *ff, jl_value_t *jlrettype, jl_t
     const char *name = "cfunction";
     jl_lambda_info_t *lam = jl_get_specialization1((jl_tupletype_t*)sigt);
     jl_value_t *astrt = (jl_value_t*)jl_any_type;
+    if (lam && lam->inInference)
+        lam = NULL;
     if (lam != NULL) {
+        jl_compile_linfo(lam);
         name = jl_symbol_name(lam->def->name);
         astrt = lam->rettype;
         if (astrt != (jl_value_t*)jl_bottom_type &&

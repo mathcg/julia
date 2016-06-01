@@ -2403,7 +2403,7 @@ void jl_init_serializer(void)
                      // everything above here represents a class of object rather than only a literal
 
                      jl_emptysvec, jl_emptytuple, jl_false, jl_true, jl_nothing, jl_any_type,
-                     call_sym, goto_ifnot_sym, return_sym, body_sym, line_sym,
+                     call_sym, invoke_sym, goto_ifnot_sym, return_sym, body_sym, line_sym,
                      lambda_sym, jl_symbol("tuple"), assign_sym,
 
                      // empirical list of very common symbols

@@ -277,7 +277,15 @@ end
 
 function show(io::IO, l::LambdaInfo)
     if isdefined(l, :def)
-        println(io, "LambdaInfo for ", l.def.name)
+        if (l === l.def.lambda_template)
+            print(io, "LambdaInfo template for ")
+            show(io, l.def)
+            println(io)
+        else
+            print(io, "LambdaInfo for ")
+            show_lambda_types(io, l.specTypes.parameters)
+            println(io)
+        end
     else
         println(io, "Toplevel LambdaInfo thunk")
     end
@@ -947,11 +955,40 @@ function show_unquoted(io::IO, ex::Expr, indent::Int, prec::Int)
         show(io, ex.head)
         for arg in args
             print(io, ", ")
-            show(io, arg)
+            if isa(arg, LambdaInfo) && isdefined(arg, :specTypes)
+                show_lambda_types(io, arg.specTypes.parameters)
+            else
+                show(io, arg)
+            end
         end
         print(io, "))")
     end
     show_type && show_expr_type(io, ex.typ, emphstate)
+    nothing
+end
+
+function show_lambda_types(io::IO, sig::SimpleVector)
+    # print a method signature tuple
+    ft = sig[1]
+    if ft <: Function && isempty(ft.parameters) &&
+            isdefined(ft.name.module, ft.name.mt.name) &&
+            ft == typeof(getfield(ft.name.module, ft.name.mt.name))
+        print(io, ft.name.mt.name)
+    elseif isa(ft, DataType) && is(ft.name, Type.name) && isleaftype(ft)
+        f = ft.parameters[1]
+        print(io, f)
+    else
+        print(io, "(::", ft, ")")
+    end
+    first = true
+    print(io, '(')
+    for i = 2:length(sig)  # fixme (iter): `eachindex` with offset?
+        first || print(io, ", ")
+        first = false
+        print(io, "::", sig[i])
+    end
+    print(io, ')')
+    nothing
 end
 
 function ismodulecall(ex::Expr)
@@ -989,6 +1026,7 @@ function show(io::IO, tv::TypeVar)
         print(io, "<:")
         show(io, tv.ub)
     end
+    nothing
 end
 
 function dump(io::IO, x::SimpleVector, n::Int, indent)
@@ -1008,6 +1046,7 @@ function dump(io::IO, x::SimpleVector, n::Int, indent)
             end
         end
     end
+    nothing
 end
 
 function dump(io::IO, x::ANY, n::Int, indent)
@@ -1069,6 +1108,7 @@ function dump(io::IO, x::Array, n::Int, indent)
             end
         end
     end
+    nothing
 end
 dump(io::IO, x::Symbol, n::Int, indent) = print(io, typeof(x), " ", x)
 
@@ -1090,6 +1130,7 @@ function dump(io::IO, x::DataType, n::Int, indent)
             end
         end
     end
+    nothing
 end
 
 # dumptype is for displaying abstract type hierarchies like Jameson

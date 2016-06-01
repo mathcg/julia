@@ -1076,7 +1076,7 @@ jl_lambda_info_t *jl_get_specialization1(jl_tupletype_t *types)
 
     // make sure exactly 1 method matches (issue #7302).
     int i;
-    for(i=0; i < jl_nparams(types); i++) {
+    for (i = 0; i < jl_nparams(types); i++) {
         jl_value_t *ti = jl_tparam(types, i);
         // if one argument type is DataType, multiple Type{} definitions
         // might match. also be conservative with tuples rather than trying
@@ -1097,31 +1097,29 @@ jl_lambda_info_t *jl_get_specialization1(jl_tupletype_t *types)
     JL_TRY {
         sf = jl_method_lookup_by_type(mt, types, 1, 1);
     } JL_CATCH {
-        goto not_found;
+        sf = NULL;
     }
-    if (sf != NULL) {
-        jl_method_t *m = sf->def;
-        if (jl_has_call_ambiguities(types, m)) {
-            goto not_found;
-        }
-    }
-    if (sf == NULL || sf->code == NULL || sf->inInference)
-        goto not_found;
-    if (sf->functionObjectsDecls.functionObject == NULL) {
-        if (sf->fptr != NULL)
-            goto not_found;
-        jl_compile_linfo(sf);
+    if (sf == NULL || sf->code == NULL ||
+            jl_has_call_ambiguities(types, sf->def)) {
+        sf = NULL;
     }
     JL_GC_POP();
     return sf;
- not_found:
-    JL_GC_POP();
-    return NULL;
 }
 
 JL_DLLEXPORT int jl_compile_hint(jl_tupletype_t *types)
 {
-    return jl_get_specialization1(types) != NULL;
+    jl_lambda_info_t *li = jl_get_specialization1(types);
+    if (li == NULL)
+        return 0;
+    jl_compile_linfo(li);
+    return 1;
+}
+
+JL_DLLEXPORT jl_value_t *jl_get_spec_lambda(jl_tupletype_t *types)
+{
+    jl_value_t *li = (jl_value_t*)jl_get_specialization1(types);
+    return li ? li : jl_nothing;
 }
 
 int jl_has_call_ambiguities(jl_tupletype_t *types, jl_method_t *m)
@@ -1184,8 +1182,10 @@ static int _compile_all_tvar_union(jl_tupletype_t *methsig, jl_svec_t *tvars)
                 // usually can create a specialized version of the function,
                 // if the signature is already a leaftype
                 jl_lambda_info_t *spec = jl_get_specialization1(methsig);
-                if (spec)
+                if (spec) {
+                    jl_compile_linfo(spec);
                     return 1;
+                }
             }
             return 0;
         }
@@ -1216,7 +1216,9 @@ static int _compile_all_tvar_union(jl_tupletype_t *methsig, jl_svec_t *tvars)
             goto getnext; // signature wouldn't be callable / is invalid -- skip it
         }
         if (jl_is_leaf_type(sig)) {
-            if (jl_get_specialization1((jl_tupletype_t*)sig)) {
+            jl_lambda_info_t *spec = jl_get_specialization1((jl_tupletype_t*)sig);
+            if (spec) {
+                jl_compile_linfo(spec);
                 if (!jl_has_typevars((jl_value_t*)sig)) goto getnext; // success
             }
         }
