@@ -2742,45 +2742,6 @@ static jl_cgval_t emit_call(jl_expr_t *ex, jl_codectx_t *ctx)
         }
     }
 
-    if (ctx->linfo->inferred) {
-        aty = (jl_value_t*)call_arg_types(args, arglen, ctx);
-        // attempt compile-time specialization for inferred types
-        if (aty != NULL) {
-            aty = (jl_value_t*)jl_apply_tuple_type((jl_svec_t*)aty);
-            /*if (trace) {
-                  jl_printf(JL_STDOUT, "call %s%s\n",
-                  jl_sprint(args[0]),
-                  jl_sprint((jl_value_t*)aty));
-              }*/
-            jl_lambda_info_t *li = jl_get_specialization1((jl_tupletype_t*)aty);
-            if (li != NULL && !li->inInference) {
-                jl_compile_linfo(li);
-                assert(li->functionObjectsDecls.functionObject != NULL);
-                theFptr = (Value*)li->functionObjectsDecls.functionObject;
-                jl_cgval_t fval;
-                if (f != NULL) {
-                    // TODO jb/functions: avoid making too many roots here
-                    if (!jl_is_globalref(args[0]) && !jl_is_symbol(args[0]) &&
-                        !jl_is_leaf_type(f)) {
-                        if (ctx->linfo->def)
-                            jl_add_linfo_root(ctx->linfo, f);
-                        else // for toplevel thunks, just write the value back to the AST to root it
-                            jl_array_ptr_set(ex->args, 0, f);
-                    }
-                    fval = mark_julia_const((jl_value_t*)f);
-                }
-                else {
-                    fval = emit_expr(args[0], ctx);
-                }
-                if (ctx->linfo->def) // root this li in case it gets deleted from the cache in `f`
-                    jl_add_linfo_root(ctx->linfo, (jl_value_t*)li);
-                result = emit_call_function_object(li, fval, theFptr, args, nargs, expr, ctx);
-                JL_GC_POP();
-                return result;
-            }
-        }
-    }
-
     // emit function and arguments
     nargs++; // add function to nargs count
     jl_cgval_t *anArg = (jl_cgval_t*)alloca(sizeof(jl_cgval_t) * nargs);
