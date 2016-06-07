@@ -1183,7 +1183,7 @@ export
     CachingPool,
     ClusterManager,
     default_worker_pool,
-    define,
+    remoteset!,
     fetch,
     init_worker,
     interrupt,

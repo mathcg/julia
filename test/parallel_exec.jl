@@ -801,7 +801,7 @@ wp = CachingPool(workers())
 @test [1:100...] == pmap(wp, x->x, 1:100)
 
 # test variable broadcasting
-define(wp; wp_foo=1, wp_bar="foobar", wp_baz=ones(10^6))
+remoteset!(wp; wp_foo=1, wp_bar="foobar", wp_baz=ones(10^6))
 for p in workers()
     @test remotecall_fetch(()->wp_foo, p) == 1
     @test remotecall_fetch(()->wp_bar, p) == "foobar"

@@ -4,11 +4,15 @@ abstract AbstractWorkerPool
 
 # An AbstractWorkerPool should implement
 #
-# `append!` - add a new worker into the pool
+# `push!` - add a new worker into the pool
 # `put!` - put back a worker to the pool
 # `take!` - take a worker from the pool
 # `length` - number of workers available in the pool
-# `isready` - return true if a `take!` on the pool would block, else false
+# `isready` - return false if a `take!` on the pool would block, else true
+#
+# The default implementations of the above (on a AbstractWorkerPool) require fields
+#    channel::RemoteChannel{Channel{Int}}
+#    workers::Set{Int}
 #
 
 type WorkerPool <: AbstractWorkerPool
@@ -30,20 +34,20 @@ function WorkerPool(workers::Vector{Int})
 
     # Add workers to the pool
     for w in workers
-        append!(pool, w)
+        push!(pool, w)
     end
 
     return pool
 end
 
-append!(pool::AbstractWorkerPool, w::Int) = (push!(pool.workers, w); put!(pool.channel, w); pool)
-append!(pool::AbstractWorkerPool, w::Worker) = append!(pool, w.id)
+push!(pool::AbstractWorkerPool, w::Int) = (push!(pool.workers, w); put!(pool.channel, w); pool)
+push!(pool::AbstractWorkerPool, w::Worker) = push!(pool, w.id)
 length(pool::AbstractWorkerPool) = length(pool.workers)
 isready(pool::AbstractWorkerPool) = isready(pool.channel)
 
 put!(pool::AbstractWorkerPool, w::Int) = (put!(pool.channel, w); pool)
 
-workers(pool::AbstractWorkerPool) = Int[p for p in pool.workers]
+workers(pool::AbstractWorkerPool) = collect(pool.workers)
 
 function take!(pool::AbstractWorkerPool)
     # Find an active worker
@@ -132,7 +136,7 @@ type CachingPool <: AbstractWorkerPool
     channel::RemoteChannel{Channel{Int}}
     workers::Set{Int}
 
-    map_obj2ref::Dict{Tuple, RemoteChannel}  # Mapping between a tuple (worker_id, object_number) and a remote_ref
+    map_obj2ref::Dict{Tuple{Int, Any}, RemoteChannel}  # Mapping between a tuple (worker_id, f) and a remote_ref
     broadcasted_symbols::Set{Symbol}
 
     function CachingPool()
@@ -145,7 +149,7 @@ end
 function CachingPool(workers::Vector{Int})
     pool = CachingPool()
     for w in workers
-        append!(pool, w)
+        push!(pool, w)
     end
     return pool
 end
@@ -158,7 +162,7 @@ function empty!(pool::CachingPool)
     end
     empty!(pool.map_obj2ref)
 
-    results = asyncmap(p->remotecall_fetch(clear_definitions, p, pool.broadcasted_symbols), pool.workers)
+    results = asyncmap(p->remotecall_fetch(clear_definitions, p, pool.broadcasted_symbols), workers(pool))
     @assert all(results)
     empty!(pool.broadcasted_symbols)
     return pool
@@ -203,9 +207,7 @@ function remotecall_pool(rc_f, f, pool::CachingPool, args...; kwargs...)
 end
 
 function define_locally(kvpairs)
-    for kv in kvpairs
-        k = kv[1]
-        v = kv[2]
+    for (k,v) in kvpairs
         eval(Main, Expr(:(=), k, v))
     end
     return true
@@ -218,8 +220,8 @@ function clear_definitions(names)
     return true
 end
 
-function define(pool::CachingPool; kwargs...)
-    results = asyncmap(p->remotecall_fetch(define_locally, p, kwargs), pool.workers)
+function remoteset!(pool::CachingPool; kwargs...)
+    results = asyncmap(p->remotecall_fetch(define_locally, p, kwargs), workers(pool))
     @assert all(results)
 
     # record the symbols broadcasted
