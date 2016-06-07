@@ -232,7 +232,7 @@ mktempdir() do dir
                 @test LibGit2.iscommit(string(commit_oid1),repo)
                 @test LibGit2.iscommit(string(commit_oid2),repo)
                 @test LibGit2.is_ancestor_of(string(commit_oid1),string(commit_oid2),repo)
-
+                @test LibGit2.revcount(repo, string(commit_oid1), string(commit_oid2)) == (-1,1)
                 # lookup commits
                 cmt = LibGit2.get(LibGit2.GitCommit, repo, commit_oid1)
                 try
